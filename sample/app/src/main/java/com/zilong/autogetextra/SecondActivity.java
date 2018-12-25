@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 
+
 public class SecondActivity extends AppCompatActivity {
 
     @AutoGetExtra("key_test")
@@ -17,6 +18,5 @@ public class SecondActivity extends AppCompatActivity {
 
 
         Log.e("SecondActivity", "---------> " + value);
-
     }
 }

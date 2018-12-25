@@ -16,7 +16,7 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onClick(View v) {
                         Intent intent = new Intent(MainActivity.this, SecondActivity.class);
-                        intent.putExtra("key_test", "enen");
+                        intent.putExtra("key_test","ekjkjkdsknenen呢嫩");
                         startActivity(intent);
                     }
                 });

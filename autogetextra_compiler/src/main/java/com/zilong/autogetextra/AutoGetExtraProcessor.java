@@ -8,6 +8,7 @@ import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -27,6 +28,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 import javax.tools.Diagnostic;
 
@@ -37,6 +39,7 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
 
     private TypeName activityTpeName = ClassName.get("android.app", "Activity").withoutAnnotations();
     private TypeName intentTypeName = ClassName.get("android.content", "Intent").withoutAnnotations();
+    private TypeName bundleTypeName = ClassName.get("android.os", "Bundle").withoutAnnotations();
     private Messager messager;
     private Filer filer;
     private Elements elementUtils;
@@ -80,20 +83,24 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
 
             List<AutoSetFieldParam> list = entry.getValue();
 
-            //创建 自动获取extra 给注解字段 设置值的 class
-            TypeName autoSetTypeName = createAutoSetClassFile(className, list);
+            if (list.size() > 0) {
+                //创建 自动获取extra 给注解字段 设置值的 新class，返回新class的 typeName
+                TypeName autoSetTypeName = createAutoSetClassFile(list.get(0).superElementTypeMirroe, list);
 
 
-            //创建 bind class，供客户调用
-            if (isFirst) {
-                methodBuilder.addCode("if (activity instanceof $T) {\n", className);
-                isFirst = false;
-            } else {
-                methodBuilder.addCode("else if (activity instanceof $T) {\n", className);
+                //创建 bind class，供客户调用
+                if (isFirst) {
+                    methodBuilder.addCode("if (activity instanceof $T) {\n", className);
+                    isFirst = false;
+                } else {
+                    methodBuilder.addCode("else if (activity instanceof $T) {\n", className);
+                }
+                methodBuilder.addCode("\t$T binder = new $T();\n", autoSetTypeName, autoSetTypeName);
+                methodBuilder.addCode("\tbinder.bind(($T)activity);\n", className);
+                methodBuilder.addCode("}\n");
             }
-            methodBuilder.addCode("\t$T binder = new $T();\n", autoSetTypeName, autoSetTypeName);
-            methodBuilder.addCode("\tbinder.bind(($T)activity);\n", className);
-            methodBuilder.addCode("}\n");
+
+
         }
 
         createJavaFile("com.zilong.autogetextra", "InjectAutoGetExtra", methodBuilder.build());
@@ -101,24 +108,29 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
     }
 
     //创建获取intent extra 自动设置给 被注解字段 类 ...$Binder,里边只有一个bind静态方法
-    private TypeName createAutoSetClassFile(ClassName className, List<AutoSetFieldParam> params) {
+    private ClassName createAutoSetClassFile(TypeMirror superElementTypeMirror, List<AutoSetFieldParam> params) {
         //在相同目录下，新建一个  ...$Binder 类，用来给注解的字段，设置值
-        TypeName autoSetTypeName = ClassName.get(className.packageName(), className.simpleName() + "$Binder");
+        ClassName superClassName = (ClassName) ClassName.get(superElementTypeMirror);
+        ClassName autoSetTypeName = ClassName.get(superClassName.packageName(), superClassName.simpleName() + "$Binder");
 
         //给新建的 ...$Binder类，添加方法
         MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder("bind")
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
-                .addParameter(className, "activity");
-        //addStatement  可以自动导包  addCode 不能
-        methodBuilder.addStatement("$T intent = activity.getIntent()", intentTypeName);
+                .addParameter(superClassName, "target");
+
+        if (ClassUtil.isSubtypeOfType(superElementTypeMirror, "android.app.Activity")) {
+            //addStatement  可以自动导包  addCode
+            methodBuilder.addStatement("$T bundle = target.getIntent().getExtras()", bundleTypeName);
+        } else {
+            methodBuilder.addStatement("$T bundle = target.getArguments()", bundleTypeName);
+        }
         for (AutoSetFieldParam param : params) {
-            TypeName fieldTypeName = ClassUtil.getTypeName(param.fieldType);
-            methodBuilder.addCode("if (intent.hasExtra($S)){\n", param.fieldKeyName);
-            methodBuilder.addCode("activity.$N = ($T)intent.getSerializableExtra($S);\n", param.fieldName, fieldTypeName, param.fieldKeyName);
+            methodBuilder.addCode("if (bundle.containsKey($S)){\n", param.fieldKeyName);
+            methodBuilder.addCode("target.$N = ($T)(bundle.get($S));\n", param.fieldSimpleName, ClassName.get(param.fieldTypeMirror), param.fieldKeyName);
             methodBuilder.addCode("}\n");
         }
 
-        createJavaFile(className.packageName(), ((ClassName) autoSetTypeName).simpleName(), methodBuilder.build());
+        createJavaFile(autoSetTypeName.packageName(), autoSetTypeName.simpleName(), methodBuilder.build());
 
         //返回新建类的  TypeName(继承自 ClassName，包含了类信息)
         return autoSetTypeName;
@@ -127,6 +139,7 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
 
     //找到所有被Auto注解的字段，并存下来相关信息
     private Map<String, List<AutoSetFieldParam>> findAllNeedAutoSetElements(Set<? extends TypeElement> set, RoundEnvironment roundEnvironment) {
+        //key  旧class 名称    value:list<AutoSetFieldParam>  旧class下 所有的 被注解字段信息
         Map<String, List<AutoSetFieldParam>> map = new LinkedHashMap<>();
 
         //获取被 AutoGetExtra 注解的 元素
@@ -137,10 +150,10 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
                 continue;
             }
 
-            //获取被修饰字段 的 上一层 元素 （在这里就是 class ）
+            //获取被修饰字段 的 上一层 元素 （在这里就是 旧class  ）的全名称  例如 com.zilong.MyCLass
             String fullClassName = ((TypeElement) element.getEnclosingElement()).getQualifiedName().toString();
 
-            //判断map中是否已经存在该class 的 被注解字段 集合，没有创建新的
+            //判断map中是否已经存在该class 的 被注解字段 集合，如果没有创建新的
             List<AutoSetFieldParam> autoSetFieldParamList;
             if (map.containsKey(fullClassName)) {
                 autoSetFieldParamList = map.get(fullClassName);
@@ -150,14 +163,13 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
             }
 
             //获取被注解元素 名称，类型，intent 的extra  keyName
-            String fieldName = element.getSimpleName().toString();
-            String fieldType = element.asType().toString();
-            String fieldKeyName = element.getAnnotation(AutoGetExtra.class).value();
-
             AutoSetFieldParam param = new AutoSetFieldParam();
-            param.fieldName = fieldName;
-            param.fieldType = fieldType;
-            param.fieldKeyName = fieldKeyName;
+            param.superElementTypeMirroe = element.getEnclosingElement().asType();
+            param.fieldSimpleName = element.getSimpleName().toString();
+            param.fieldType = element.asType().toString();
+            param.fieldTypeMirror = element.asType();
+            param.fieldKeyName = element.getAnnotation(AutoGetExtra.class).value();
+
             //存储
             autoSetFieldParamList.add(param);
         }
@@ -191,14 +203,16 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
 
     //被注解 字段 信息
     class AutoSetFieldParam {
-        public String fieldName;
+        public String fieldSimpleName;
         public String fieldType;
         public String fieldKeyName;
+        public TypeMirror fieldTypeMirror;//被注解字段的 类型信息
+        public TypeMirror superElementTypeMirroe;//包裹被注解字段 的 class 的类型  activity 或 fragment
 
         @Override
         public String toString() {
             return "AutoSetFieldParam{" +
-                    "fieldName='" + fieldName + '\'' +
+                    "fieldSimpleName='" + fieldSimpleName + '\'' +
                     ", fieldType='" + fieldType + '\'' +
                     ", fieldKeyName='" + fieldKeyName + '\'' +
                     '}';
