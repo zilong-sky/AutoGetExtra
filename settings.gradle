@@ -1,1 +1,1 @@
-include ':sample:app', ':autogetextra_annotation', ':autogetextra_compiler'
+include ':sample:app', ':annotation', ':compiler'
