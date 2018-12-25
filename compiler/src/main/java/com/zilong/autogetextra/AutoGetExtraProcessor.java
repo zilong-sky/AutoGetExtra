@@ -37,6 +37,7 @@ import javax.tools.Diagnostic;
 public class AutoGetExtraProcessor extends AbstractProcessor {
 
 
+    private TypeName objectTpeName = ClassName.get("java.lang", "Object").withoutAnnotations();
     private TypeName activityTpeName = ClassName.get("android.app", "Activity").withoutAnnotations();
     private TypeName intentTypeName = ClassName.get("android.content", "Intent").withoutAnnotations();
     private TypeName bundleTypeName = ClassName.get("android.os", "Bundle").withoutAnnotations();
@@ -70,7 +71,7 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
 
         MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder("bind")
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
-                .addParameter(activityTpeName, "activity");
+                .addParameter(objectTpeName, "target");
 
 
         Map<String, List<AutoSetFieldParam>> map = findAllNeedAutoSetElements(set, roundEnvironment);
@@ -90,13 +91,13 @@ public class AutoGetExtraProcessor extends AbstractProcessor {
 
                 //创建 bind class，供客户调用
                 if (isFirst) {
-                    methodBuilder.addCode("if (activity instanceof $T) {\n", className);
+                    methodBuilder.addCode("if (target instanceof $T) {\n", className);
                     isFirst = false;
                 } else {
-                    methodBuilder.addCode("else if (activity instanceof $T) {\n", className);
+                    methodBuilder.addCode("else if (target instanceof $T) {\n", className);
                 }
                 methodBuilder.addCode("\t$T binder = new $T();\n", autoSetTypeName, autoSetTypeName);
-                methodBuilder.addCode("\tbinder.bind(($T)activity);\n", className);
+                methodBuilder.addCode("\tbinder.bind(($T)target);\n", className);
                 methodBuilder.addCode("}\n");
             }
 

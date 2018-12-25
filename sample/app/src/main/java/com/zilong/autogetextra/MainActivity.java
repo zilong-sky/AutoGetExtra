@@ -15,9 +15,11 @@ public class MainActivity extends AppCompatActivity {
                 .setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        Intent intent = new Intent(MainActivity.this, SecondActivity.class);
-                        intent.putExtra("key_test","ekjkjkdsknenen呢嫩");
-                        startActivity(intent);
+//                        Intent intent = new Intent(MainActivity.this, SecondActivity.class);
+//                        intent.putExtra("key_test","ekjkjkdsknenen呢嫩");
+//                        startActivity(intent);
+                        OneFragment oneFragment = OneFragment.getInstance("fragmnet");
+                        getSupportFragmentManager().beginTransaction().add(R.id.fl, oneFragment).commitAllowingStateLoss();
                     }
                 });
 
