@@ -1,0 +1,1 @@
+include ':sample:app', ':autogetextra_annotation', ':autogetextra_compiler'

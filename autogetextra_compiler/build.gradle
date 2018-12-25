@@ -1,0 +1,17 @@
+apply plugin: 'java-library'
+
+dependencies {
+    implementation project(":autogetextra_annotation")
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.google.auto.service:auto-service:1.0-rc4'
+    implementation 'com.squareup:javapoet:1.11.1'
+}
+
+//  解决build警告：编码GBK的不可映射字符
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+}
+
+
+sourceCompatibility = "8"
+targetCompatibility = "8"
