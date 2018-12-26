@@ -1,9 +1,7 @@
 AutoGetExtra
 =================
 
- * Eliminate `getIntent()` or `getArguments()`calls by using `@InjectExtra` on fields.
-
-#示例
+# 示例
 
 ```java
 public class MainActivity extends AppCompatActivity {
